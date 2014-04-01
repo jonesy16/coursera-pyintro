@@ -56,7 +56,8 @@ def number_to_name(number):
 
 def computer_choose():
     """
-    Computes an opponent's choice based on an upper max
+    Computes an opponent's choice, iterating until a valid number is found
+    in case the choices are discontinuous (e.g., 1,3,4,9).
     """
     computer_choice_num = None
     while (computer_choice_num not in winarray) :  
