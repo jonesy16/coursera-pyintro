@@ -30,11 +30,16 @@ canvas_color  = 'Black'
 
 # Define paddle variables
 ball_rad     = 6  # size of ball
-ball_max_vel = 3  # maximum ball velocity
+ball_max_vel = 24  # maximum ball velocity
+ball_min_vel = 6
+ball_vel_scale = 3
 pdl_vel      = 3  # paddle movement speed
-pdl_width    = 10  # width of paddle
+pdl_width    = 10 # width of paddle
 pdl_height   = 50 # height of paddle
 board_margin = 5  # distance of paddle from screen edge
+ball_dir     = [0, 0] # -1 (ball moving left/up), 1 (ball moving right/down)
+ball_vel     = [0, 0] # ball velocity magnitude
+ball_pos     = [0, 0] # ball position (from 0 to canvas * ball_max_vel)
 
 pdl_left_edge_l   = board_margin
 pdl_left_edge_r   = pdl_left_edge_l + pdl_width
@@ -67,7 +72,7 @@ def reset_ball():
     Resets the ball to the middle of the canvas with 0 velocity
     """
     global ball_pos, ball_vel
-    ball_pos = [canvas_width / 2, canvas_height / 2]
+    ball_pos = [canvas_width * ball_vel_scale / 2, canvas_height * ball_vel_scale / 2]
     ball_vel = [0, 0]
     return
 
@@ -96,11 +101,12 @@ def move_computer_paddle():
     If ball is above paddle, move paddle up, and vice versa.
     """
     global pdl_right_edge_top, pdl_right_edge_bot
+    ball_local_pos = [ball_pos[0]/ball_vel_scale, ball_pos[1]/ball_vel_scale]
     pdl_right_middle = (pdl_right_edge_top + pdl_right_edge_bot) / 2
-    if ball_vel[0] > 0:
-        if ball_pos[1] < pdl_right_middle:
+    if ball_dir[0] > 0:
+        if ball_local_pos[1] < pdl_right_middle:
             pdl_right_vel = -pdl_vel
-        elif ball_pos[1] > pdl_right_middle:
+        elif ball_local_pos[1] > pdl_right_middle:
             pdl_right_vel = pdl_vel
         else:
             pdl_right_vel = 0
@@ -120,15 +126,17 @@ def move_ball():
     Moves the ball's location based on its current velocity
     """
     # determine ball position
-    ball_pos[0] += ball_vel[0]
-    ball_pos[1] += ball_vel[1]
+    ball_vel[0], ball_vel[1] = max(ball_vel[0],ball_min_vel), max(ball_vel[1],ball_min_vel)
+    ball_vel[0], ball_vel[1] = min(ball_vel[0],ball_max_vel), min(ball_vel[1],ball_max_vel)
+    ball_pos[0] += ball_vel[0] * ball_dir[0]
+    ball_pos[1] += ball_vel[1] * ball_dir[1]
     # check for intersection with paddle
     isect = ball_intersect_paddle()
     # check for intersection with screen edge (top/bot first)
     if not isect:
         ball_intersect_screen()
     # check for scoring position
-        if (ball_pos[0] > (canvas_width - 1)):
+        if ((ball_pos[0] / ball_vel_scale) > (canvas_width - 1)):
             score('player')
         elif ball_pos[0] <= 0:
             score('computer')
@@ -140,42 +148,29 @@ def ball_intersect_paddle():
     based on where it hits the paddle.
     """
     isect = 0
-    if ((ball_pos[0] - ball_rad) <= pdl_left_edge_r) and \
-       ((ball_pos[1] + ball_rad) >= pdl_left_edge_top) and \
-       ((ball_pos[1] - ball_rad) <= pdl_left_edge_bot):
+    ball_local_pos = [ball_pos[0]/ball_vel_scale, ball_pos[1]/ball_vel_scale]
+    if ((ball_local_pos[0] - ball_rad) <= pdl_left_edge_r) and \
+       ((ball_local_pos[1] + ball_rad) >= pdl_left_edge_top) and \
+       ((ball_local_pos[1] - ball_rad) <= pdl_left_edge_bot):
         isect = 1
-        isect_dist_from_top = ball_pos[1] - pdl_left_edge_top - ball_rad
-        isect_dist_from_bottom = pdl_left_edge_bot - ball_pos[1] - ball_rad
-    elif ((ball_pos[0] + ball_rad) >= pdl_right_edge_l) and \
-         ((ball_pos[1] + ball_rad) >= pdl_right_edge_top) and \
-         ((ball_pos[1] - ball_rad) <= pdl_right_edge_bot):
+        isect_dist_from_top = ball_local_pos[1] - pdl_left_edge_top - ball_rad
+        isect_dist_from_bottom = pdl_left_edge_bot - ball_local_pos[1] - ball_rad
+    elif ((ball_local_pos[0] + ball_rad) >= pdl_right_edge_l) and \
+         ((ball_local_pos[1] + ball_rad) >= pdl_right_edge_top) and \
+         ((ball_local_pos[1] - ball_rad) <= pdl_right_edge_bot):
         isect = 1
-        isect_dist_from_top = ball_pos[1] - pdl_right_edge_top - ball_rad
-        isect_dist_from_bottom = pdl_right_edge_bot - ball_pos[1] - ball_rad
+        isect_dist_from_top = ball_local_pos[1] - pdl_right_edge_top - ball_rad
+        isect_dist_from_bottom = pdl_right_edge_bot - ball_local_pos[1] - ball_rad
     if isect == 1:
-        if abs(isect_dist_from_bottom - isect_dist_from_top) < (pdl_height / 3):
-            ball_vel[0] = -ball_vel[0]
-            ball_vel[1] = ball_vel[1]
-        elif isect_dist_from_top <= 0:
-            vel_mult = min((ball_rad - isect_dist_from_top)/ball_rad,ball_max_vel)
-            ball_vel[1] = -abs(max(ball_vel[1]*vel_mult,ball_max_vel))
-            if ball_vel[0] > 0:
-                ball_vel[0] = -max(ball_vel[0]*vel_mult,ball_max_vel)
-            else:
-                ball_vel[0] = max(ball_vel[0]*vel_mult,ball_max_vel)
+        ball_dir[0] = -ball_dir[0]
+        if isect_dist_from_top <= 0:
+            ball_vel[1] += abs(isect_dist_from_top) / 2
+            ball_vel[0] += 1
+            ball_dir[1] = -1
         elif isect_dist_from_bottom <= 0:
-            vel_mult = min((ball_rad - isect_dist_from_bottom)/ball_rad,ball_max_vel)
-            ball_vel[1] = max(abs(ball_vel[1])*vel_mult,ball_max_vel)
-            if ball_vel[0] > 0:
-                ball_vel[0] = -max(ball_vel[0]*vel_mult,ball_max_vel)
-            else:
-                ball_vel[0] = max(ball_vel[0]*vel_mult,ball_max_vel)
-        elif isect_dist_from_top < isect_dist_from_bottom:
-            ball_vel[1] = -abs(ball_vel[1])
-            ball_vel[0] = -ball_vel[0]
-        elif isect_dist_from_bottom < isect_dist_from_top:
-            ball_vel[1] = abs(ball_vel[1])
-            ball_vel[0] = -ball_vel[0]
+            ball_vel[1] += abs(isect_dist_from_top) / 2
+            ball_vel[0] += 1
+            ball_dir[1] = 1
         return True
     else:
         return False
@@ -184,12 +179,13 @@ def ball_intersect_screen():
     """
     Checks if the ball intersects the screen edge and reflects it
     """
-    if ((ball_pos[1] - ball_rad) <= 0):
-        ball_vel[1] = -ball_vel[1]
-        ball_pos[1] = ball_rad
-    elif (ball_pos[1] + ball_rad) > (canvas_height - 1):
-        ball_vel[1] = -ball_vel[1]
-        ball_pos[1] = canvas_height - 1 - ball_rad
+    ball_local_pos = [ball_pos[0]/ball_vel_scale, ball_pos[1]/ball_vel_scale]
+    if ((ball_local_pos[1] - ball_rad - 1) <= 0):
+        ball_dir[1] = 1
+        ball_pos[1] = ball_rad * ball_vel_scale + ball_vel_scale
+    elif (ball_local_pos[1] + ball_rad + 1) >= canvas_height:
+        ball_dir[1] = -1
+        ball_pos[1] = (canvas_height - ball_rad - 2) * ball_vel_scale
     return
 
 # define key handler
@@ -243,12 +239,16 @@ def game_start():
     global ball_vel, game_state
     if (ball_vel[0] or ball_vel[1]):
         return
-    ball_x_vel = min(random.randint(1,max(player_score,computer_score,1)),ball_max_vel)
-    ball_y_vel = min(random.randint(1,max(player_score,computer_score,1)),ball_max_vel)
+    ball_x_vel = random.randint(ball_min_vel,ball_min_vel+max(player_score,computer_score))
+    ball_y_vel = random.randint(ball_min_vel,ball_min_vel+max(player_score,computer_score))
     if random.randint(1,2) == 1:
-        ball_x_vel = -ball_x_vel
+        ball_dir[0] = -1
+    else:
+        ball_dir[0] = 1
     if random.randint(1,2) == 1:
-        ball_y_vel = -ball_y_vel
+        ball_dir[1] = -1
+    else:
+        ball_dir[1] = 1
     ball_vel = [ball_x_vel, ball_y_vel]
     game_state = 1
     timer.stop()
@@ -277,6 +277,10 @@ def draw_paddle(canvas):
         canvas.draw_text(msg_pause, (center_x - msg_pause_width / 2,
                                      center_y + msg_font_size / 2),
                                      msg_font_size, 'White' )
+    elif timer.is_running():
+        canvas.draw_text(msg_ready, (center_x - msg_ready_width / 2,
+                                         center_y + msg_font_size),
+                                         msg_font_size, 'White')
     else:
         # determine ball_position
         move_ball()
@@ -284,7 +288,9 @@ def draw_paddle(canvas):
         move_player_paddle()
         move_computer_paddle()
         # draw ball and paddles
-        canvas.draw_circle(ball_pos, ball_rad, 1, 'White', 'White')
+        canvas.draw_circle((ball_pos[0]/ball_vel_scale,
+                            ball_pos[1]/ball_vel_scale),
+                            ball_rad, 1, 'White', 'White')
         canvas.draw_polygon([(pdl_left_edge_l,pdl_left_edge_bot),
                              (pdl_left_edge_r,pdl_left_edge_bot),
                              (pdl_left_edge_r,pdl_left_edge_top),
@@ -300,13 +306,7 @@ def draw_paddle(canvas):
                          score_font_size, score_font_color)
         # draw ball velocity
         canvas.draw_text(str(ball_vel), (10,10), 10, 'green')
-        # draw standby message
-        if timer.is_running():
             
-            canvas.draw_text(msg_ready, (center_x - msg_ready_width / 2,
-                                         center_y + msg_font_size),
-                                         msg_font_size, 'White')
-
 # create frame
 
 frame=simplegui.create_frame('Paddle', canvas_width, canvas_height)
